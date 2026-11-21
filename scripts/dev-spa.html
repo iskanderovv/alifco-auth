@@ -43,8 +43,11 @@
     .who { flex: 1; min-width: 0; }
     .name { font-weight: 700; font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .email { color: #5f6b7a; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .link-btn { font: inherit; font-size: 14px; color: #5f6b7a; background: none; border: 0; cursor: pointer; padding: 6px 4px; }
-    .link-btn:hover { color: #14171a; text-decoration: underline; }
+    .signout {
+      display: block; width: 100%; margin-top: 28px; padding: 12px 16px; font: inherit; font-weight: 600;
+      color: #fff; background: #d92d20; border: 0; border-radius: 10px; cursor: pointer;
+    }
+    .signout:hover { background: #b42318; }
     h2 { font-size: 15px; margin: 28px 0 4px; }
     .hint { color: #5f6b7a; font-size: 14px; margin: 0 0 8px; }
     .row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #eef0f2; }
@@ -207,8 +210,7 @@
             : h('div', { class: 'avatar' }, initial),
           h('div', { class: 'who' },
             h('div', { class: 'name' }, user.name),
-            user.email ? h('div', { class: 'email' }, user.email) : null),
-          h('button', { class: 'link-btn', onclick: signOut }, 'Sign out')),
+            user.email ? h('div', { class: 'email' }, user.email) : null)),
         h('h2', null, 'Connected accounts'),
         h('p', { class: 'hint' }, 'Connect more accounts to sign in with any of them.'),
         PROVIDERS.map((p) => {
@@ -226,6 +228,7 @@
                 }, 'Disconnect')
               : h('button', { class: 'small primary', onclick: () => connect(p.id) }, 'Connect'));
         }),
+        h('button', { class: 'signout', onclick: signOut }, 'Sign out'),
       ];
     }
 
