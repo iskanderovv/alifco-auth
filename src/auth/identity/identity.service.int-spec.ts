@@ -67,9 +67,48 @@ describe('IdentityService (real PostgreSQL)', () => {
     expect(await prisma.oAuthIdentity.count()).toBe(1);
 
     expect(second.user.name).toBe('Ali Valiyev');
-    expect(second.user.avatarUrl).toBe('https://example.com/ali.png');
     const [identity] = await prisma.oAuthIdentity.findMany();
     expect(identity.lastLoginAt).not.toBeNull();
+  });
+
+  it('refreshes the avatar on every login because provider picture URLs expire', async () => {
+    await service.loginWithProfile(OAuthProvider.google, googleProfile);
+    const { user } = await service.loginWithProfile(OAuthProvider.google, {
+      ...googleProfile,
+      avatarUrl: 'https://example.com/new.png',
+    });
+
+    expect(user.avatarUrl).toBe('https://example.com/new.png');
+    const stored = await prisma.user.findFirstOrThrow();
+    expect(stored.avatarUrl).toBe('https://example.com/new.png');
+  });
+
+  it('keeps the avatar when a later login brings none or an unsafe one', async () => {
+    await service.loginWithProfile(OAuthProvider.google, googleProfile);
+
+    const withoutPicture = await service.loginWithProfile(
+      OAuthProvider.google,
+      {
+        ...googleProfile,
+        avatarUrl: undefined,
+      },
+    );
+    expect(withoutPicture.user.avatarUrl).toBe('https://example.com/ali.png');
+
+    const insecure = await service.loginWithProfile(OAuthProvider.google, {
+      ...googleProfile,
+      avatarUrl: 'http://insecure.example.com/a.png',
+    });
+    expect(insecure.user.avatarUrl).toBe('https://example.com/ali.png');
+  });
+
+  it('never rewrites the name on a later login', async () => {
+    await service.loginWithProfile(OAuthProvider.google, googleProfile);
+    const { user } = await service.loginWithProfile(OAuthProvider.google, {
+      ...googleProfile,
+      name: 'Someone Else',
+    });
+    expect(user.name).toBe('Ali Valiyev');
   });
 
   it('keeps an unverified email off the user and only on the identity', async () => {

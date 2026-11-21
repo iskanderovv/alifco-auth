@@ -189,7 +189,9 @@ deploy, Dockerfile          production deployment
 
 - Expired `oauth_transactions` and `refresh_tokens` are never deleted. A cleanup job is needed before this runs for long.
 - Refresh tokens expire after 30 days of the family's last rotation with no maximum session age.
-- Facebook profile picture URLs are signed CDN links that expire after about a month.
+- Profile picture URLs (Facebook, Telegram) are temporary links to the provider. The avatar is refreshed on every login, but between logins a stored link can stop working. The pictures are not copied to our own storage.
+- The display name is set at sign-up and never rewritten by later logins.
+- No account merging: an account that already has its own profile (because someone signed in with it before) cannot be linked to another profile.
 - Telegram never returns an email. Facebook returns one only on request, and it is kept on the identity but never trusted.
 - No unit tests for the rate limits (`/auth/*` 20 per minute, refresh 10, everything else 60). They were checked by hand against a running server.
 - No account deletion, no admin features.

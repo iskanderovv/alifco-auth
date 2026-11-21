@@ -152,6 +152,15 @@ export class IdentityService {
         email: normalizeEmail(profile.email) ?? undefined,
       },
     });
+
+    // Provider picture URLs expire, so the avatar follows the latest login. The name does not.
+    const avatarUrl = safeAvatarUrl(profile.avatarUrl);
+    if (avatarUrl && avatarUrl !== identity.user.avatarUrl) {
+      return this.prisma.user.update({
+        where: { id: identity.userId },
+        data: { avatarUrl },
+      });
+    }
     return identity.user;
   }
 }
