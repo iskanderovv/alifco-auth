@@ -130,7 +130,7 @@ On a laptop: `/health` about 30k req/s, `/me` (JWT check plus a query) about 6.6
 
 ## Deployment
 
-Production runs at https://alifco-auth.labbay.app. Every push to `main` runs CI (format, lint, types, unit and integration tests, build). If it passes and `DEPLOY_ENABLED` is `true`, the image is built, pushed to GitHub Container Registry and deployed to the VPS over SSH. If the new container is not healthy within 90 seconds the previous image is started again and the job fails.
+Deployment is optional and not in use yet. The files below describe running this on a VPS at https://alifco-auth.labbay.app. Every push to `main` and every pull request runs CI (format, lint, types, unit and integration tests, build). If it passes and `DEPLOY_ENABLED` is `true`, the image is built, pushed to GitHub Container Registry and deployed to the VPS over SSH. If the new container is not healthy within 90 seconds the previous image is started again and the job fails.
 
 ```
 Dockerfile                      production image (runs migrations on start, then the API)
