@@ -3,6 +3,13 @@
 Sign in with Google, Facebook and Telegram. NestJS, PostgreSQL, Prisma.
 A user can link several providers to one profile. Sessions are a short-lived access JWT plus a rotating refresh token in an httpOnly cookie.
 
+## Design
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): components, flows and the decisions with the alternatives considered
+- [docs/DATABASE.md](docs/DATABASE.md): the schema, its constraints and why (also as [DBML](docs/schema.dbml))
+- [docs/SECURITY.md](docs/SECURITY.md): threats, mitigations, and the tests that show them
+- [docs/TESTING.md](docs/TESTING.md): test strategy, mutation checks, load test results
+
 ## Quick start
 
 ```bash
@@ -115,6 +122,8 @@ npm run test:int     # integration tests against real PostgreSQL
 psql postgresql://oauth:oauth@localhost:5432/oauth -c 'CREATE DATABASE oauth_test'
 ```
 
+GitHub Actions runs format, lint, types, unit and integration tests and the build on every push and pull request (`.github/workflows/ci.yml`).
+
 Providers are replaced by fakes, so no test calls Google, Facebook or Telegram. The tests cover token and state handling, linking, the HTTP flow, concurrent refreshes and unlinks, and the OpenAPI document.
 
 Load test (50 connections, 10 s each) against a test-mode instance on another port, with its own database:
@@ -128,47 +137,9 @@ npm run stress
 
 On a laptop: `/health` about 30k req/s, `/me` (JWT check plus a query) about 6.6k req/s with p99 11 ms, login start about 8.4k req/s. A hundred parallel refreshes with one token produce exactly one success and revoke the family. The script refuses to run against a database whose name does not end in `_test`.
 
-## Deployment
+## Docker
 
-Deployment is optional and not in use yet. The files below describe running this on a VPS at https://alifco-auth.labbay.app. Every push to `main` and every pull request runs CI (format, lint, types, unit and integration tests, build). If it passes and `DEPLOY_ENABLED` is `true`, the image is built, pushed to GitHub Container Registry and deployed to the VPS over SSH. If the new container is not healthy within 90 seconds the previous image is started again and the job fails.
-
-```
-Dockerfile                      production image (runs migrations on start, then the API)
-deploy/docker-compose.prod.yml  Caddy (automatic https), the API, PostgreSQL
-deploy/Caddyfile                the domain and security headers
-deploy/deploy.sh                pull, start, wait for healthy, roll back on failure
-deploy/backup.sh                daily pg_dump, keeps 14 days
-.github/workflows/ci-cd.yml     CI and deploy
-```
-
-### One-time setup
-
-1. DNS: an A record for `alifco-auth.labbay.app` pointing at the VPS.
-2. VPS: Docker with the compose plugin, ports 80 and 443 open, a user in the `docker` group, and `/opt/alifco-auth` owned by that user.
-3. On the VPS create `/opt/alifco-auth/.env` from `deploy/production.env.example`. `FRONTEND_URL` must be on the same site as the API (a subdomain of `labbay.app`), because the refresh cookie is `SameSite=Lax`.
-4. Create a key for CI: `ssh-keygen -t ed25519 -f ci_deploy -C ci`, append `ci_deploy.pub` to the deploy user's `authorized_keys`.
-5. In the GitHub repository add the Actions secrets `SSH_HOST`, `SSH_USER`, `SSH_KEY` (the private key) and `SSH_KNOWN_HOSTS` (the output of `ssh-keyscan -H <host>`). Optionally create a `production` environment that requires a reviewer. Until the VPS is ready, CI only runs the tests: deployment starts when the repository variable `DEPLOY_ENABLED` is set to `true` (Settings, Secrets and variables, Variables).
-6. Backups: `0 3 * * * /opt/alifco-auth/backup.sh` in the deploy user's crontab.
-
-Secrets live only in the VPS `.env` and in GitHub Secrets. The registry login used during a deploy is the job's short-lived token and is removed afterwards.
-
-### Provider consoles
-
-Register the production redirect URIs:
-
-| Provider | Redirect URI | Also |
-|---|---|---|
-| Google | `https://alifco-auth.labbay.app/auth/google/callback` | In Testing status only listed test users can sign in. Publishing the app opens it to everyone and may require Google's verification |
-| Facebook | `https://alifco-auth.labbay.app/auth/facebook/callback` | Switch the app to Live, otherwise only people with a role on the app can sign in |
-| Telegram | `https://alifco-auth.labbay.app/auth/telegram/callback` | BotFather, Login Widget, allowed URLs |
-
-### Things to know
-
-- Migrations run when the container starts, and a rollback starts the previous image against the already migrated database. Keep migrations backward compatible, and run a single instance.
-- Swagger (`/docs`) is not served in production.
-- Rate limiting and `trust proxy` assume exactly one proxy in front (Caddy). Another proxy or CDN in front changes the client IP the limits see.
-- On the VPS: `cd /opt/alifco-auth && docker compose -f docker-compose.prod.yml logs -f api`.
-- The image is about 900 MB (the Prisma CLI is inside it for migrations); deploys only transfer changed layers.
+`docker build -t alifco-auth .` builds an image that applies the migrations and then starts the API as a non-root user. It needs the same environment variables as a normal start and a reachable PostgreSQL. Nothing is deployed anywhere: the demo runs on a laptop behind a tunnel, and CI only runs the tests.
 
 ## Layout
 
@@ -182,7 +153,7 @@ src/auth/identity           find or create, link, unlink
 src/auth                    controller, guards, cookies
 src/users                   /me
 scripts                     dev SPA and load test
-deploy, Dockerfile          production deployment
+Dockerfile                  production image
 ```
 
 ## Not done, and known limits
