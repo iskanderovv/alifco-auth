@@ -19,7 +19,9 @@ async function bootstrap() {
 
   const config = app.get<ConfigService<Env, true>>(ConfigService);
   if (config.get('NODE_ENV', { infer: true }) !== 'production') {
-    setupSwagger(app);
+    const user = config.get('SWAGGER_USER', { infer: true });
+    const password = config.get('SWAGGER_PASSWORD', { infer: true });
+    setupSwagger(app, user && password ? { user, password } : undefined);
   }
   await app.listen(config.get('PORT', { infer: true }));
 }

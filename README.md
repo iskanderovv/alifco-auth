@@ -28,7 +28,7 @@ openssl rand -base64 32           # COOKIE_SECRET
 If something already listens on 5432, run `POSTGRES_PORT=5433 docker compose up -d db` and change the port in `DATABASE_URL`.
 
 - Try it by hand: `node scripts/dev-spa.mjs`, then open http://localhost:5173 (a stand-in for the SPA).
-- API documentation: http://localhost:3000/docs (not served when `NODE_ENV=production`).
+- API documentation: http://localhost:3000/docs (not served when `NODE_ENV=production`). Set `SWAGGER_USER` and `SWAGGER_PASSWORD` to protect it with a browser login.
 
 A provider is enabled only when both of its variables are set. The service starts with any subset.
 

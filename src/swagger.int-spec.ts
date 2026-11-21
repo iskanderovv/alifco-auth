@@ -85,3 +85,65 @@ describe('OpenAPI document', () => {
     expect([200, 301]).toContain(res.status);
   });
 });
+
+describe('Swagger login', () => {
+  let app: INestApplication;
+  const credentials = { user: 'alifco', password: 's3cret:with:colons' };
+  const basic = (user: string, password: string) =>
+    `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    const nest = moduleRef.createNestApplication<NestExpressApplication>({
+      bodyParser: false,
+    });
+    configureApp(nest);
+    setupSwagger(nest, credentials);
+    await nest.init();
+    app = nest;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it.each(['/docs', '/docs-json'])('asks for a login on %s', async (path) => {
+    const res = await request(app.getHttpServer()).get(path);
+    expect(res.status).toBe(401);
+    expect(res.headers['www-authenticate']).toContain('Basic');
+  });
+
+  it('rejects a wrong password and a wrong user', async () => {
+    const server = app.getHttpServer();
+    const badPassword = await request(server)
+      .get('/docs-json')
+      .set('Authorization', basic('alifco', 'nope'));
+    const badUser = await request(server)
+      .get('/docs-json')
+      .set('Authorization', basic('root', credentials.password));
+    expect(badPassword.status).toBe(401);
+    expect(badUser.status).toBe(401);
+  });
+
+  it('rejects a malformed header', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/docs-json')
+      .set('Authorization', 'Basic !!!');
+    expect(res.status).toBe(401);
+  });
+
+  it('lets the right login through, even with colons in the password', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/docs-json')
+      .set('Authorization', basic(credentials.user, credentials.password));
+    expect(res.status).toBe(200);
+    expect(res.body.openapi).toBeDefined();
+  });
+
+  it('does not protect the API itself', async () => {
+    const res = await request(app.getHttpServer()).get('/health');
+    expect(res.status).toBe(200);
+  });
+});

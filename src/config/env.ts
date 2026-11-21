@@ -43,6 +43,9 @@ const envSchema = z
     TELEGRAM_CLIENT_ID: optionalString,
     TELEGRAM_CLIENT_SECRET: optionalString,
 
+    SWAGGER_USER: optionalString,
+    SWAGGER_PASSWORD: optionalString,
+
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -55,6 +58,7 @@ const envSchema = z
       ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
       ['FACEBOOK_APP_ID', 'FACEBOOK_APP_SECRET'],
       ['TELEGRAM_CLIENT_ID', 'TELEGRAM_CLIENT_SECRET'],
+      ['SWAGGER_USER', 'SWAGGER_PASSWORD'],
     ];
     for (const [a, b] of pairs) {
       if (Boolean(env[a]) !== Boolean(env[b])) {

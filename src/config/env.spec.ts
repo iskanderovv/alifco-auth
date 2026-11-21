@@ -54,6 +54,22 @@ describe('parseEnv', () => {
     );
   });
 
+  it('requires the Swagger user and password together', () => {
+    expect(() => parseEnv({ ...valid, SWAGGER_USER: 'alifco' })).toThrow(
+      'SWAGGER_USER and SWAGGER_PASSWORD must be set together',
+    );
+    expect(() => parseEnv({ ...valid, SWAGGER_PASSWORD: 'x' })).toThrow(
+      'SWAGGER_USER and SWAGGER_PASSWORD must be set together',
+    );
+    const env = parseEnv({
+      ...valid,
+      SWAGGER_USER: 'a',
+      SWAGGER_PASSWORD: 'b',
+    });
+    expect(env.SWAGGER_USER).toBe('a');
+    expect(parseEnv(valid).SWAGGER_USER).toBeUndefined();
+  });
+
   it('requires secure cookies when SameSite is none', () => {
     expect(() => parseEnv({ ...valid, COOKIE_SAME_SITE: 'none' })).toThrow(
       'COOKIE_SECURE',
