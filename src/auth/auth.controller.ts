@@ -12,9 +12,25 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ApiBearerAuth,
+  ApiCookieAuth,
+  ApiHeader,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AppError } from '../common/app-error';
+import {
+  AccessTokenResponse,
+  ApiError,
+  LinkUrlResponse,
+} from '../common/api-models';
 import type { Env } from '../config/env';
 import {
   OAuthMode,
@@ -44,6 +60,16 @@ const REDIRECT_ERRORS = new Set([
   'already_linked',
 ]);
 
+const PROVIDER_PARAM = {
+  name: 'provider',
+  enum: Object.values(ProviderName),
+};
+const CSRF_HEADER = {
+  name: 'X-Requested-With',
+  required: true,
+  description: 'Must be "fetch"',
+};
+
 const AUTH_LIMIT = { default: { limit: 20, ttl: 60_000 } };
 const REFRESH_LIMIT = { default: { limit: 10, ttl: 60_000 } };
 
@@ -55,6 +81,7 @@ function requestMeta(req: Request): RequestMeta {
   return { userAgent: req.get('user-agent') ?? undefined, ip: req.ip };
 }
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -71,6 +98,14 @@ export class AuthController {
     this.frontendUrl = config.get('FRONTEND_URL', { infer: true });
   }
 
+  @ApiOperation({
+    summary: 'Start a login',
+    description:
+      'Redirects the browser to the provider and sets the oauth_tx cookie.',
+  })
+  @ApiParam(PROVIDER_PARAM)
+  @ApiResponse({ status: 302, description: 'Redirect to the provider' })
+  @ApiError(404, 'provider_not_found')
   @Get(':provider')
   @Throttle(AUTH_LIMIT)
   async start(
@@ -92,6 +127,14 @@ export class AuthController {
   }
 
   // A browser navigation, not an API call: every outcome is a redirect.
+  @ApiOperation({
+    summary: 'Provider callback',
+    description:
+      'Always a redirect to the SPA. Login: FRONTEND_URL/auth/callback on success (no token in the URL; the SPA then calls /auth/refresh) or ?error=<code>. Link: FRONTEND_URL/settings/accounts?linked=<provider> or ?error=<code>. Error codes: access_denied, invalid_state, provider_error, internal_error, identity_taken, already_linked.',
+  })
+  @ApiParam(PROVIDER_PARAM)
+  @ApiResponse({ status: 302, description: 'Redirect to the SPA' })
+  @ApiError(404, 'provider_not_found')
   @Get(':provider/callback')
   @Throttle(AUTH_LIMIT)
   async callback(
@@ -171,6 +214,19 @@ export class AuthController {
     }
   }
 
+  @ApiOperation({
+    summary: 'Rotate the refresh token',
+    description:
+      'Needs the refresh_token cookie. Returns a new access token and sets a new cookie. Presenting an already used refresh token revokes the whole session.',
+  })
+  @ApiCookieAuth('refresh_token')
+  @ApiHeader(CSRF_HEADER)
+  @ApiOkResponse({ type: AccessTokenResponse })
+  @ApiError(
+    401,
+    'refresh_missing, refresh_invalid, refresh_expired, refresh_reused',
+  )
+  @ApiError(403, 'csrf_header_missing, csrf_origin_invalid')
   @Post('refresh')
   @HttpCode(200)
   @UseGuards(CsrfGuard)
@@ -204,6 +260,14 @@ export class AuthController {
     }
   }
 
+  @ApiOperation({
+    summary: 'Log out',
+    description: 'Revokes the whole session and clears the cookie. Always 204.',
+  })
+  @ApiCookieAuth('refresh_token')
+  @ApiHeader(CSRF_HEADER)
+  @ApiNoContentResponse()
+  @ApiError(403, 'csrf_header_missing, csrf_origin_invalid')
   @Post('logout')
   @HttpCode(204)
   @UseGuards(CsrfGuard)
@@ -216,6 +280,16 @@ export class AuthController {
     this.cookies.clearRefreshToken(res);
   }
 
+  @ApiOperation({
+    summary: 'Start linking another provider',
+    description:
+      'Returns the provider URL. Navigate the browser to it; the callback attaches the account and redirects to the settings page.',
+  })
+  @ApiBearerAuth()
+  @ApiParam(PROVIDER_PARAM)
+  @ApiOkResponse({ type: LinkUrlResponse })
+  @ApiError(401, 'token_missing, token_invalid, token_expired')
+  @ApiError(404, 'provider_not_found')
   @Post('link/:provider')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
@@ -240,6 +314,16 @@ export class AuthController {
     };
   }
 
+  @ApiOperation({
+    summary: 'Unlink a provider',
+    description: 'The last remaining provider cannot be removed.',
+  })
+  @ApiBearerAuth()
+  @ApiParam(PROVIDER_PARAM)
+  @ApiNoContentResponse()
+  @ApiError(401, 'token_missing, token_invalid, token_expired')
+  @ApiError(404, 'provider_not_found, not_linked')
+  @ApiError(409, 'last_identity')
   @Delete('link/:provider')
   @HttpCode(204)
   @UseGuards(JwtAuthGuard)
