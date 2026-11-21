@@ -1,0 +1,99 @@
+// Source of truth for the database. See docs/DESIGN.md section 0.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OAuthProvider {
+  google
+  facebook
+  telegram
+
+  @@map("oauth_provider")
+}
+
+enum OAuthMode {
+  login
+  link
+
+  @@map("oauth_mode")
+}
+
+model User {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Informational. Set only when the provider verified it (Google). Not unique, never used to match accounts.
+  email     String?  @db.VarChar(320)
+  name      String   @db.VarChar(255)
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  identities        OAuthIdentity[]
+  refreshTokens     RefreshToken[]
+  oauthTransactions OAuthTransaction[]
+
+  @@map("users")
+}
+
+model OAuthIdentity {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  provider       OAuthProvider
+  /// Google `sub`, Facebook `id`, Telegram `sub`.
+  providerUserId String        @map("provider_user_id") @db.VarChar(255)
+  /// Email exactly as the provider reported it. Never trusted for matching.
+  email          String?       @db.VarChar(320)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastLoginAt    DateTime?     @map("last_login_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId], map: "uq_identity_provider_subject")
+  @@unique([userId, provider], map: "uq_identity_user_provider")
+  @@map("oauth_identities")
+}
+
+model RefreshToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  /// All rotations of one login share a family. Reuse of a revoked token revokes the family.
+  familyId  String    @map("family_id") @db.Uuid
+  /// SHA-256 hex of the opaque token. The raw token is never stored.
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  userAgent String?   @map("user_agent")
+  ip        String?   @db.Inet
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+/// One row per started OAuth flow. Single use, short lived.
+model OAuthTransaction {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// SHA-256 hex of the random `state` sent to the provider.
+  stateHash    String        @unique @map("state_hash") @db.Char(64)
+  codeVerifier String        @map("code_verifier") @db.VarChar(128)
+  provider     OAuthProvider
+  mode         OAuthMode     @default(login)
+  /// Set only for mode = link: the logged-in user who started the link.
+  userId       String?       @map("user_id") @db.Uuid
+  expiresAt    DateTime      @map("expires_at") @db.Timestamptz(6)
+  consumedAt   DateTime?     @map("consumed_at") @db.Timestamptz(6)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("oauth_transactions")
+}

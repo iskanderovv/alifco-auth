@@ -1,0 +1,20 @@
+{
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "rootDir": "..",
+  "testRegex": ".*\\.int-spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "testEnvironment": "node",
+  "globalSetup": "<rootDir>/test/global-setup.js",
+  "moduleNameMapper": {
+    "^(\\.{1,2}/.*)\\.js$": "$1"
+  },
+  "setupFiles": [
+    "<rootDir>/test/set-env.js"
+  ]
+}
