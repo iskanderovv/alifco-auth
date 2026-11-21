@@ -10,5 +10,4 @@ src/generated
 *.md
 scripts
 test
-deploy
 docker-compose.yml
