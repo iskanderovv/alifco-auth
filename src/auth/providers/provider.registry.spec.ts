@@ -46,6 +46,21 @@ describe('ProviderRegistry', () => {
     );
   });
 
+  it('registers Telegram with its own callback URL', () => {
+    const registry = new ProviderRegistry(
+      fakeConfig({
+        ...base,
+        TELEGRAM_CLIENT_ID: '123',
+        TELEGRAM_CLIENT_SECRET: 'secret',
+      }),
+    );
+    const url = new URL(registry.get('telegram').getAuthorizationUrl('s', 'c'));
+    expect(url.origin).toBe('https://oauth.telegram.org');
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'http://localhost:3000/auth/telegram/callback',
+    );
+  });
+
   it('does not accept inherited object keys as provider names', () => {
     const registry = new ProviderRegistry(fakeConfig(base));
     for (const name of ['constructor', '__proto__', 'toString']) {

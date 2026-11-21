@@ -5,6 +5,7 @@ import type { Env } from '../../config/env';
 import { FacebookProvider } from './facebook.provider';
 import { GoogleProvider } from './google.provider';
 import type { OAuthProvider } from './oauth-provider.interface';
+import { TelegramProvider } from './telegram.provider';
 
 /**
  * The providers that are configured. A provider with no credentials is simply absent, so the
@@ -42,6 +43,21 @@ export class ProviderRegistry {
           appSecret: facebookSecret,
           graphVersion: config.get('FACEBOOK_GRAPH_VERSION', { infer: true }),
           redirectUri: `${apiBaseUrl}/auth/facebook/callback`,
+          timeoutMs,
+        }),
+      );
+    }
+
+    const telegramId = config.get('TELEGRAM_CLIENT_ID', { infer: true });
+    const telegramSecret = config.get('TELEGRAM_CLIENT_SECRET', {
+      infer: true,
+    });
+    if (telegramId && telegramSecret) {
+      this.register(
+        new TelegramProvider({
+          clientId: telegramId,
+          clientSecret: telegramSecret,
+          redirectUri: `${apiBaseUrl}/auth/telegram/callback`,
           timeoutMs,
         }),
       );

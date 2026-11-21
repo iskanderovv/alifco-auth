@@ -172,7 +172,9 @@ describe('GoogleProvider', () => {
       });
 
       it('an expired token', async () => {
-        await expectProviderError(respondWith(signIdToken({ expiresIn: -10 })));
+        await expectProviderError(
+          respondWith(signIdToken({ expiresIn: -120 })),
+        );
       });
 
       it('a token signed with a key that is not in the JWKS', async () => {
@@ -215,7 +217,8 @@ describe('GoogleProvider', () => {
           );
         const promise = makeProvider(fetchFn).authenticate(input);
         await expect(promise).rejects.toMatchObject({ code: 'provider_error' });
-        await expect(promise).rejects.not.toThrow(/auth-code|invalid_grant/);
+        await expect(promise).rejects.toThrow(/returned 400 \(invalid_grant\)/);
+        await expect(promise).rejects.not.toThrow(/auth-code|echoed/);
       });
 
       it('a response without id_token', async () => {

@@ -208,8 +208,8 @@ export class AuthController {
 
   private redirectErrorCode(error: unknown): string {
     if (error instanceof AppError) {
-      // The code is logged, never the provider's message.
-      this.logger.warn(`Login failed: ${error.code}`);
+      // Our own messages only: they name the failed step and never contain provider response bodies.
+      this.logger.warn(`Login failed: ${error.code} - ${error.message}`);
       return REDIRECT_ERRORS.has(error.code) ? error.code : 'provider_error';
     }
     this.logger.error(

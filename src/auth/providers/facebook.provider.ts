@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
-import { AppError } from '../../common/app-error';
 import { OAuthProvider as ProviderName } from '../../generated/prisma/enums';
 import type { OAuthProfile, OAuthProvider } from './oauth-provider.interface';
+import { asString, providerError } from './oidc';
 
 export interface FacebookProviderOptions {
   appId: string;
@@ -146,12 +146,4 @@ interface FacebookMe {
   name?: unknown;
   email?: unknown;
   picture?: { data?: { url?: unknown } };
-}
-
-function providerError(message: string): AppError {
-  return new AppError('provider_error', 502, message);
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value ? value : undefined;
 }

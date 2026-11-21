@@ -1,7 +1,7 @@
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
-import { AppError } from '../../common/app-error';
+import { createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
 import { OAuthProvider as ProviderName } from '../../generated/prisma/enums';
 import type { OAuthProfile, OAuthProvider } from './oauth-provider.interface';
+import { asString, providerError, requestIdToken, verifyIdToken } from './oidc';
 
 const AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -63,8 +63,28 @@ export class GoogleProvider implements OAuthProvider {
     code: string;
     codeVerifier: string;
   }): Promise<OAuthProfile> {
-    const idToken = await this.exchangeCode(input);
-    const claims = await this.verifyIdToken(idToken);
+    const idToken = await requestIdToken({
+      fetchFn: this.fetchFn,
+      url: TOKEN_URL,
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: input.code,
+        redirect_uri: this.options.redirectUri,
+        client_id: this.options.clientId,
+        client_secret: this.options.clientSecret,
+        code_verifier: input.codeVerifier,
+      }),
+      timeoutMs: this.options.timeoutMs,
+      provider: 'Google',
+    });
+    const claims = await verifyIdToken({
+      idToken,
+      getKey: this.getKey,
+      issuer: ISSUERS,
+      audience: this.options.clientId,
+      algorithms: ['RS256'],
+      provider: 'Google',
+    });
 
     if (typeof claims.sub !== 'string' || !claims.sub) {
       throw providerError('Google id_token has no subject');
@@ -79,63 +99,4 @@ export class GoogleProvider implements OAuthProvider {
       avatarUrl: asString(claims.picture),
     };
   }
-
-  private async exchangeCode(input: {
-    code: string;
-    codeVerifier: string;
-  }): Promise<string> {
-    let response: Response;
-    try {
-      response = await this.fetchFn(TOKEN_URL, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/x-www-form-urlencoded',
-          accept: 'application/json',
-        },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          code: input.code,
-          redirect_uri: this.options.redirectUri,
-          client_id: this.options.clientId,
-          client_secret: this.options.clientSecret,
-          code_verifier: input.codeVerifier,
-        }),
-        signal: AbortSignal.timeout(this.options.timeoutMs),
-      });
-    } catch {
-      throw providerError('Google token request failed');
-    }
-
-    // The response body is never copied into an error: it can echo request values.
-    if (!response.ok) {
-      throw providerError(`Google token endpoint returned ${response.status}`);
-    }
-    const body: unknown = await response.json().catch(() => null);
-    const idToken = (body as { id_token?: unknown } | null)?.id_token;
-    if (typeof idToken !== 'string' || !idToken) {
-      throw providerError('Google response has no id_token');
-    }
-    return idToken;
-  }
-
-  private async verifyIdToken(idToken: string) {
-    try {
-      const { payload } = await jwtVerify(idToken, this.getKey, {
-        algorithms: ['RS256'],
-        issuer: ISSUERS,
-        audience: this.options.clientId,
-      });
-      return payload;
-    } catch {
-      throw providerError('Google id_token failed verification');
-    }
-  }
-}
-
-function providerError(message: string): AppError {
-  return new AppError('provider_error', 502, message);
-}
-
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value ? value : undefined;
 }

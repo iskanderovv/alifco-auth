@@ -5,9 +5,15 @@
 // It serves one page on every path (SPA-style). The page links to the login, and on
 // /auth/callback it does what a real SPA must do: call POST /auth/refresh with the cookie,
 // then GET /me with the access token.
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 
-const API = process.env.API_BASE_URL ?? 'http://localhost:3000';
+// Proxy mode (for an https tunnel): the SPA and the API share one origin. Set DEV_SPA_PROXY_API
+// to the API address, for example http://localhost:3000, and expose only this server.
+const PROXY_TARGET = process.env.DEV_SPA_PROXY_API;
+const API = PROXY_TARGET ? '' : (process.env.API_BASE_URL ?? 'http://localhost:3000');
+// Paths that belong to the API. /auth/callback is NOT here: it is the SPA's own page.
+const API_PATHS =
+  /^\/(auth\/(google|facebook|telegram)(\/callback)?|auth\/refresh|auth\/logout|me|health)(\?.*)?$/;
 const PORT = Number(process.env.DEV_SPA_PORT ?? 5173);
 
 const page = `<!doctype html>
@@ -23,6 +29,7 @@ const page = `<!doctype html>
 <p>
   <a class="btn" href="${API}/auth/google">Login with Google</a>
   <a class="btn" href="${API}/auth/facebook">Login with Facebook</a>
+  <a class="btn" href="${API}/auth/telegram">Login with Telegram</a>
   <button id="refresh">POST /auth/refresh</button>
   <button id="me">GET /me</button>
   <button id="logout">POST /auth/logout</button>
@@ -99,9 +106,36 @@ const page = `<!doctype html>
   }
 </script>`;
 
+function proxy(req, res) {
+  const target = new URL(PROXY_TARGET);
+  const upstream = httpRequest(
+    {
+      host: target.hostname,
+      port: target.port,
+      path: req.url,
+      method: req.method,
+      headers: { ...req.headers, host: target.host },
+    },
+    (response) => {
+      // Status, Set-Cookie and Location (the OAuth redirects) pass through untouched.
+      res.writeHead(response.statusCode ?? 502, response.headers);
+      response.pipe(res);
+    },
+  );
+  upstream.on('error', () => {
+    res.writeHead(502, { 'content-type': 'text/plain' });
+    res.end('API is not reachable');
+  });
+  req.pipe(upstream);
+}
+
 createServer((req, res) => {
+  if (PROXY_TARGET && API_PATHS.test(req.url ?? '')) {
+    return proxy(req, res);
+  }
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   res.end(page);
 }).listen(PORT, () => {
-  console.log(`dev SPA on http://localhost:${PORT} (API ${API})`);
+  const mode = PROXY_TARGET ? `proxying the API at ${PROXY_TARGET}` : `API ${API}`;
+  console.log(`dev SPA on http://localhost:${PORT} (${mode})`);
 });
