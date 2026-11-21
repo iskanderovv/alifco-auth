@@ -7,3 +7,4 @@ coverage/
 *.dbdiagram
 .DS_Store
 src/generated/
+.playwright-mcp/
