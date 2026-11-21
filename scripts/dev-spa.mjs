@@ -22,6 +22,7 @@ const page = `<!doctype html>
 <h1>OAuth dev SPA</h1>
 <p>
   <a class="btn" href="${API}/auth/google">Login with Google</a>
+  <a class="btn" href="${API}/auth/facebook">Login with Facebook</a>
   <button id="refresh">POST /auth/refresh</button>
   <button id="me">GET /me</button>
   <button id="logout">POST /auth/logout</button>

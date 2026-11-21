@@ -40,7 +40,7 @@ const envSchema = z
     FACEBOOK_GRAPH_VERSION: z
       .string()
       .regex(/^v\d+\.\d+$/, 'use a form like v21.0')
-      .default('v21.0'),
+      .default('v25.0'),
     TELEGRAM_CLIENT_ID: optionalString,
     TELEGRAM_CLIENT_SECRET: optionalString,
 

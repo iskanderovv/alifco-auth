@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppError } from '../../common/app-error';
 import type { Env } from '../../config/env';
+import { FacebookProvider } from './facebook.provider';
 import { GoogleProvider } from './google.provider';
 import type { OAuthProvider } from './oauth-provider.interface';
 
@@ -27,6 +28,20 @@ export class ProviderRegistry {
           clientId: googleId,
           clientSecret: googleSecret,
           redirectUri: `${apiBaseUrl}/auth/google/callback`,
+          timeoutMs,
+        }),
+      );
+    }
+
+    const facebookId = config.get('FACEBOOK_APP_ID', { infer: true });
+    const facebookSecret = config.get('FACEBOOK_APP_SECRET', { infer: true });
+    if (facebookId && facebookSecret) {
+      this.register(
+        new FacebookProvider({
+          appId: facebookId,
+          appSecret: facebookSecret,
+          graphVersion: config.get('FACEBOOK_GRAPH_VERSION', { infer: true }),
+          redirectUri: `${apiBaseUrl}/auth/facebook/callback`,
           timeoutMs,
         }),
       );
