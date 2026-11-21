@@ -1,7 +1,16 @@
-import { errors, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
+import {
+  createLocalJWKSet,
+  errors,
+  jwtVerify,
+  type JWK,
+  type JWTPayload,
+  type JWTVerifyGetKey,
+} from 'jose';
 import { AppError } from '../../common/app-error';
 
 const CLOCK_TOLERANCE_SECONDS = 30;
+const JWKS_TTL_MS = 10 * 60 * 1000;
+const JWKS_COOLDOWN_MS = 30 * 1000;
 
 export function providerError(message: string): AppError {
   return new AppError('provider_error', 502, message);
@@ -22,7 +31,7 @@ function describeJoseError(error: unknown): string {
     return ` (${error.code}: claim ${error.claim})`;
   }
   if (error instanceof errors.JOSEError) {
-    return ` (${error.code})`;
+    return ` (${error.code}: ${error.message})`;
   }
   return '';
 }
@@ -90,8 +99,69 @@ export async function verifyIdToken(check: IdTokenCheck): Promise<JWTPayload> {
     });
     return payload;
   } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
     throw providerError(
       `${check.provider} id_token failed verification${describeJoseError(error)}`,
     );
   }
+}
+
+// Loaded with fetch, not jose's own loader: that one does not decompress, and Telegram
+// answers the key request with gzip even when none is asked for.
+export function remoteJwks(
+  url: string,
+  timeoutMs: number,
+  fetchFn: typeof fetch = fetch,
+): JWTVerifyGetKey {
+  let keys: JWK[] = [];
+  let loadedAt = 0;
+  let inFlight: Promise<void> | undefined;
+
+  const load = (): Promise<void> => {
+    inFlight ??= (async () => {
+      let response: Response;
+      try {
+        response = await fetchFn(url, {
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch {
+        throw providerError('Signing keys request failed');
+      }
+      if (!response.ok) {
+        throw providerError(`Signing keys request returned ${response.status}`);
+      }
+      const body: unknown = await response.json().catch(() => null);
+      const list = (body as { keys?: unknown } | null)?.keys;
+      if (!Array.isArray(list)) {
+        throw providerError('Signing keys response is malformed');
+      }
+      keys = list as JWK[];
+      loadedAt = Date.now();
+    })().finally(() => {
+      inFlight = undefined;
+    });
+    return inFlight;
+  };
+
+  return async (header, token) => {
+    if (loadedAt === 0 || Date.now() - loadedAt > JWKS_TTL_MS) {
+      await load();
+    }
+    try {
+      return await createLocalJWKSet({ keys })(header, token);
+    } catch (error) {
+      // A new key may have been published: look again, but not on every bad token.
+      if (
+        error instanceof errors.JWKSNoMatchingKey &&
+        Date.now() - loadedAt > JWKS_COOLDOWN_MS
+      ) {
+        await load();
+        return createLocalJWKSet({ keys })(header, token);
+      }
+      throw error;
+    }
+  };
 }

@@ -1,5 +1,6 @@
 import {
   createLocalJWKSet,
+  errors,
   exportJWK,
   generateKeyPair,
   SignJWT,
@@ -223,6 +224,24 @@ describe('TelegramProvider', () => {
       ).authenticate(input);
       await expect(promise).rejects.toThrow(/claim aud/);
       await expect(promise).rejects.not.toThrow(/999999999/);
+    });
+
+    it('reports why the signing keys could not be used', async () => {
+      const failing = new TelegramProvider({
+        clientId: CLIENT_ID,
+        clientSecret: CLIENT_SECRET,
+        redirectUri: REDIRECT_URI,
+        timeoutMs: 1000,
+        fetchFn: respondWith(signIdToken()),
+        getKey: () => {
+          throw new errors.JOSEError(
+            'Expected 200 OK from the JSON Web Key Set HTTP response',
+          );
+        },
+      });
+      await expect(failing.authenticate(input)).rejects.toThrow(
+        /ERR_JOSE_GENERIC: Expected 200 OK from the JSON Web Key Set/,
+      );
     });
 
     it('does not copy an error value that is not a plain identifier', async () => {

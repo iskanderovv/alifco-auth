@@ -1,7 +1,13 @@
-import { createRemoteJWKSet, type JWTVerifyGetKey } from 'jose';
+import type { JWTVerifyGetKey } from 'jose';
 import { OAuthProvider as ProviderName } from '../../generated/prisma/enums';
 import type { OAuthProfile, OAuthProvider } from './oauth-provider.interface';
-import { asString, providerError, requestIdToken, verifyIdToken } from './oidc';
+import {
+  asString,
+  providerError,
+  remoteJwks,
+  requestIdToken,
+  verifyIdToken,
+} from './oidc';
 
 const AUTHORIZATION_URL = 'https://oauth.telegram.org/auth';
 const TOKEN_URL = 'https://oauth.telegram.org/token';
@@ -26,11 +32,7 @@ export class TelegramProvider implements OAuthProvider {
   constructor(private readonly options: TelegramProviderOptions) {
     this.fetchFn = options.fetchFn ?? fetch;
     this.getKey =
-      options.getKey ??
-      createRemoteJWKSet(new URL(JWKS_URL), {
-        timeoutDuration: options.timeoutMs,
-        cooldownDuration: 30_000,
-      });
+      options.getKey ?? remoteJwks(JWKS_URL, options.timeoutMs, this.fetchFn);
   }
 
   getAuthorizationUrl(state: string, codeChallenge: string): string {
