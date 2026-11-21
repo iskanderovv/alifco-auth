@@ -37,9 +37,7 @@ interface TokenOptions {
   claims?: Record<string, unknown>;
   iss?: string;
   aud?: string;
-  /** Seconds from now. Negative means already expired. */
   expiresIn?: number;
-  /** Seconds from now. Positive means not valid yet. */
   notBefore?: number;
   key?: KeyLike;
   kid?: string;
@@ -143,7 +141,6 @@ describe('TelegramProvider', () => {
       client_id: CLIENT_ID,
       code_verifier: 'verifier-value',
     });
-    // The secret travels only in the Basic header, never in the body.
     expect(JSON.stringify(body)).not.toContain(CLIENT_SECRET);
   });
 

@@ -1,7 +1,3 @@
-/**
- * Stable machine-readable error codes. Clients depend on these, messages may change.
- * See docs/API.md for the response format.
- */
 export type ErrorCode =
   | 'token_missing'
   | 'token_invalid'

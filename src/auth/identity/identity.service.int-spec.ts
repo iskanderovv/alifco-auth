@@ -37,7 +37,7 @@ describe('IdentityService (real PostgreSQL)', () => {
 
     expect(isNewUser).toBe(true);
     expect(user.name).toBe('Ali Valiyev');
-    expect(user.email).toBe('ali@gmail.com'); // verified and normalized
+    expect(user.email).toBe('ali@gmail.com');
     expect(user.avatarUrl).toBe('https://example.com/ali.png');
 
     const identities = await prisma.oAuthIdentity.findMany();
@@ -66,7 +66,6 @@ describe('IdentityService (real PostgreSQL)', () => {
     expect(await prisma.user.count()).toBe(1);
     expect(await prisma.oAuthIdentity.count()).toBe(1);
 
-    // The account profile is not rewritten by later logins.
     expect(second.user.name).toBe('Ali Valiyev');
     expect(second.user.avatarUrl).toBe('https://example.com/ali.png');
     const [identity] = await prisma.oAuthIdentity.findMany();
@@ -87,7 +86,6 @@ describe('IdentityService (real PostgreSQL)', () => {
   });
 
   it('does not merge accounts by email: pre-account takeover is not possible', async () => {
-    // The attacker registers with the victim's address through Facebook, which proves nothing.
     const attacker = await service.loginWithProfile(OAuthProvider.facebook, {
       providerUserId: 'fb-attacker',
       email: 'victim@gmail.com',
@@ -95,7 +93,6 @@ describe('IdentityService (real PostgreSQL)', () => {
       name: 'Attacker',
     });
 
-    // The real owner later signs in with Google, which does verify the email.
     const victim = await service.loginWithProfile(OAuthProvider.google, {
       providerUserId: 'google-victim',
       email: 'victim@gmail.com',
@@ -105,7 +102,6 @@ describe('IdentityService (real PostgreSQL)', () => {
 
     expect(victim.user.id).not.toBe(attacker.user.id);
     expect(await prisma.user.count()).toBe(2);
-    // Each user has exactly one identity: nothing was attached to the attacker's account.
     const identities = await prisma.oAuthIdentity.findMany();
     expect(
       identities.filter((i) => i.userId === attacker.user.id),

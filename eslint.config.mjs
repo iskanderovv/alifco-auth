@@ -33,7 +33,7 @@ export default tseslint.config(
     },
   },
   {
-    // supertest types `res.body` as any. Application code keeps the strict rules.
+    // supertest types res.body as any
     files: ['**/*.spec.ts', '**/*.int-spec.ts', 'test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-member-access': 'off',

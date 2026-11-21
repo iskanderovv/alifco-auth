@@ -11,22 +11,12 @@ const ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
 export interface GoogleProviderOptions {
   clientId: string;
   clientSecret: string;
-  /** Built from API_BASE_URL, never from the request. Must match the Google console exactly. */
   redirectUri: string;
   timeoutMs: number;
-  /** Injectable so tests never touch the network. */
   fetchFn?: typeof fetch;
   getKey?: JWTVerifyGetKey;
 }
 
-/**
- * Google, OpenID Connect authorization code flow with PKCE (S256).
- *
- * The profile comes from the `id_token` returned by Google's token endpoint. It is fetched
- * server to server over TLS with our client secret and the PKCE verifier, and its signature,
- * issuer, audience and expiry are verified anyway. No `nonce` is used: the token never passes
- * through the browser, so there is nothing to replay (`state` and PKCE cover the redirect).
- */
 export class GoogleProvider implements OAuthProvider {
   readonly name = ProviderName.google;
 
@@ -53,12 +43,12 @@ export class GoogleProvider implements OAuthProvider {
       state,
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
-      // Always show the account chooser instead of silently reusing the last account.
       prompt: 'select_account',
     }).toString();
     return url.toString();
   }
 
+  // No nonce: the id_token comes straight from the token endpoint, not through the browser.
   async authenticate(input: {
     code: string;
     codeVerifier: string;
@@ -92,7 +82,6 @@ export class GoogleProvider implements OAuthProvider {
     return {
       providerUserId: claims.sub,
       email: asString(claims.email),
-      // Google sends a boolean, some older tokens a string.
       emailVerified:
         claims.email_verified === true || claims.email_verified === 'true',
       name: asString(claims.name),

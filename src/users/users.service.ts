@@ -25,7 +25,6 @@ export class UsersService {
         },
       },
     });
-    // A valid token for a user that no longer exists.
     if (!user) {
       throw AppError.unauthorized('token_invalid');
     }

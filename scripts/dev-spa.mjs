@@ -1,17 +1,9 @@
-// Manual-testing helper that plays the role of the SPA. Not part of the service.
-//
-//   node scripts/dev-spa.mjs          then open http://localhost:5173
-//
-// It serves one page on every path (SPA-style). The page links to the login, and on
-// /auth/callback it does what a real SPA must do: call POST /auth/refresh with the cookie,
-// then GET /me with the access token.
+// Stand-in for the SPA, for manual testing: node scripts/dev-spa.mjs, then open http://localhost:5173
+// With DEV_SPA_PROXY_API set it also proxies the API, so one https tunnel can serve both.
 import { createServer, request as httpRequest } from 'node:http';
 
-// Proxy mode (for an https tunnel): the SPA and the API share one origin. Set DEV_SPA_PROXY_API
-// to the API address, for example http://localhost:3000, and expose only this server.
 const PROXY_TARGET = process.env.DEV_SPA_PROXY_API;
 const API = PROXY_TARGET ? '' : (process.env.API_BASE_URL ?? 'http://localhost:3000');
-// Paths that belong to the API. /auth/callback is NOT here: it is the SPA's own page.
 const API_PATHS =
   /^\/(auth\/(google|facebook|telegram)(\/callback)?|auth\/refresh|auth\/logout|me|health)(\?.*)?$/;
 const PORT = Number(process.env.DEV_SPA_PORT ?? 5173);
@@ -34,6 +26,10 @@ const page = `<!doctype html>
   <button id="me">GET /me</button>
   <button id="logout">POST /auth/logout</button>
 </p>
+<p>
+  Link: <button data-link="google">Google</button><button data-link="facebook">Facebook</button><button data-link="telegram">Telegram</button>
+  Unlink: <button data-unlink="google">Google</button><button data-unlink="facebook">Facebook</button><button data-unlink="telegram">Telegram</button>
+</p>
 <pre id="out">ready</pre>
 <script>
   const API = ${JSON.stringify(API)};
@@ -45,8 +41,6 @@ const page = `<!doctype html>
     out.textContent = title + '\\n' + (typeof value === 'string' ? value : JSON.stringify(value, null, 2));
   };
 
-  // The server rotates the refresh token, so two refreshes at once would log the user out.
-  // A real SPA must serialize them, like this.
   function refresh() {
     if (!inFlight) {
       inFlight = fetch(API + '/auth/refresh', {
@@ -90,7 +84,48 @@ const page = `<!doctype html>
     show('POST /auth/logout -> ' + res.status, 'session revoked, cookie cleared');
   };
 
-  // Landing after the provider redirect: this is the part every real SPA has to implement.
+  async function ensureToken() {
+    if (!accessToken) await refresh();
+    return accessToken;
+  }
+
+  document.querySelectorAll('[data-link]').forEach((button) => {
+    button.onclick = async () => {
+      if (!(await ensureToken())) return show('log in first', 'no session');
+      const res = await fetch(API + '/auth/link/' + button.dataset.link, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Authorization: 'Bearer ' + accessToken },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) location.href = body.url;
+      else show('POST /auth/link -> ' + res.status, body);
+    };
+  });
+
+  document.querySelectorAll('[data-unlink]').forEach((button) => {
+    button.onclick = async () => {
+      if (!(await ensureToken())) return show('log in first', 'no session');
+      const res = await fetch(API + '/auth/link/' + button.dataset.unlink, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { Authorization: 'Bearer ' + accessToken },
+      });
+      const body = await res.json().catch(() => ({}));
+      const profile = await me();
+      show('DELETE /auth/link -> ' + res.status, { result: body, providers: profile.body.providers });
+    };
+  });
+
+  if (location.pathname === '/settings/accounts') {
+    const params = Object.fromEntries(new URLSearchParams(location.search));
+    (async () => {
+      await ensureToken();
+      const profile = await me();
+      show('settings page: ' + JSON.stringify(params), { providers: profile.body.providers });
+    })();
+  }
+
   if (location.pathname === '/auth/callback') {
     const error = new URLSearchParams(location.search).get('error');
     if (error) {
@@ -117,7 +152,6 @@ function proxy(req, res) {
       headers: { ...req.headers, host: target.host },
     },
     (response) => {
-      // Status, Set-Cookie and Location (the OAuth redirects) pass through untouched.
       res.writeHead(response.statusCode ?? 502, response.headers);
       response.pipe(res);
     },

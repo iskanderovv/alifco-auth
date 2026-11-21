@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   HttpCode,
   Logger,
@@ -15,8 +16,13 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AppError } from '../common/app-error';
 import type { Env } from '../config/env';
+import {
+  OAuthMode,
+  OAuthProvider as ProviderName,
+} from '../generated/prisma/enums';
 import { CookieService, REFRESH_COOKIE } from './cookies.service';
 import { CsrfGuard } from './guards/csrf.guard';
+import { CurrentUserId, JwtAuthGuard } from './guards/jwt-auth.guard';
 import { IdentityService } from './identity/identity.service';
 import {
   OAUTH_TX_COOKIE,
@@ -29,15 +35,13 @@ import {
   TokenService,
 } from './tokens/token.service';
 
-/**
- * The only errors the SPA is ever told about after a browser redirect. Anything else is
- * mapped to one of these, so provider messages and exception text never reach the URL.
- */
 const REDIRECT_ERRORS = new Set([
   'access_denied',
   'invalid_state',
   'provider_error',
   'internal_error',
+  'identity_taken',
+  'already_linked',
 ]);
 
 const AUTH_LIMIT = { default: { limit: 20, ttl: 60_000 } };
@@ -67,7 +71,6 @@ export class AuthController {
     this.frontendUrl = config.get('FRONTEND_URL', { infer: true });
   }
 
-  /** Starts a login: stores state + PKCE, binds the browser with a cookie, redirects. */
   @Get(':provider')
   @Throttle(AUTH_LIMIT)
   async start(
@@ -88,11 +91,7 @@ export class AuthController {
     );
   }
 
-  /**
-   * The provider sends the browser back here. This is a navigation, not an API call, so
-   * every outcome is a redirect to the SPA: success without any token in the URL (the SPA
-   * then calls /auth/refresh), failure with a code from a fixed allowlist.
-   */
+  // A browser navigation, not an API call: every outcome is a redirect.
   @Get(':provider/callback')
   @Throttle(AUTH_LIMIT)
   async callback(
@@ -102,10 +101,10 @@ export class AuthController {
     @Res() res: Response,
   ): Promise<void> {
     const provider = this.providers.get(name);
+    let mode: OAuthMode = OAuthMode.login;
 
     try {
       if (query.error !== undefined) {
-        // `error_description` is ignored on purpose: it is provider text.
         throw new AppError(
           query.error === 'access_denied' ? 'access_denied' : 'provider_error',
           401,
@@ -118,6 +117,7 @@ export class AuthController {
         state: single(query.state),
         provider: provider.name,
       });
+      mode = transaction.mode;
 
       const code = single(query.code);
       if (!code) {
@@ -128,6 +128,21 @@ export class AuthController {
         code,
         codeVerifier: transaction.codeVerifier,
       });
+      // Linking never touches the session: no refresh cookie is issued.
+      if (transaction.mode === OAuthMode.link) {
+        if (!transaction.userId) {
+          throw new AppError('invalid_state', 400);
+        }
+        await this.identities.linkProfile(
+          transaction.userId,
+          provider.name,
+          profile,
+        );
+        this.cookies.clearTransaction(res);
+        res.redirect(302, this.settingsUrl({ linked: provider.name }));
+        return;
+      }
+
       const { user } = await this.identities.loginWithProfile(
         provider.name,
         profile,
@@ -146,11 +161,16 @@ export class AuthController {
       res.redirect(302, this.callbackUrl());
     } catch (error) {
       this.cookies.clearTransaction(res);
-      res.redirect(302, this.callbackUrl(this.redirectErrorCode(error)));
+      const code = this.redirectErrorCode(error);
+      res.redirect(
+        302,
+        mode === OAuthMode.link
+          ? this.settingsUrl({ error: code })
+          : this.callbackUrl(code),
+      );
     }
   }
 
-  /** Trades the refresh cookie for a new access token and a rotated cookie. */
   @Post('refresh')
   @HttpCode(200)
   @UseGuards(CsrfGuard)
@@ -177,7 +197,6 @@ export class AuthController {
       );
       return await this.tokens.issueAccessToken(userId);
     } catch (error) {
-      // A dead cookie is useless: remove it so the SPA goes straight to the login screen.
       if (error instanceof AppError) {
         this.cookies.clearRefreshToken(res);
       }
@@ -185,7 +204,6 @@ export class AuthController {
     }
   }
 
-  /** Idempotent: always 204, even with a missing or unknown cookie. */
   @Post('logout')
   @HttpCode(204)
   @UseGuards(CsrfGuard)
@@ -198,6 +216,51 @@ export class AuthController {
     this.cookies.clearRefreshToken(res);
   }
 
+  @Post('link/:provider')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @Throttle(AUTH_LIMIT)
+  async link(
+    @Param('provider') name: string,
+    @CurrentUserId() userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ url: string }> {
+    const provider = this.providers.get(name);
+    const transaction = await this.transactions.start({
+      provider: provider.name,
+      mode: OAuthMode.link,
+      userId,
+    });
+    this.cookies.setTransaction(res, transaction.transactionId);
+    return {
+      url: provider.getAuthorizationUrl(
+        transaction.state,
+        transaction.codeChallenge,
+      ),
+    };
+  }
+
+  @Delete('link/:provider')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard)
+  async unlink(
+    @Param('provider') name: string,
+    @CurrentUserId() userId: string,
+  ): Promise<void> {
+    if (!(Object.values(ProviderName) as string[]).includes(name)) {
+      throw new AppError('provider_not_found', 404);
+    }
+    await this.identities.unlink(userId, name as ProviderName);
+  }
+
+  private settingsUrl(params: Record<string, string>): string {
+    const url = new URL('/settings/accounts', this.frontendUrl);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+    return url.toString();
+  }
+
   private callbackUrl(errorCode?: string): string {
     const url = new URL('/auth/callback', this.frontendUrl);
     if (errorCode) {
@@ -208,7 +271,6 @@ export class AuthController {
 
   private redirectErrorCode(error: unknown): string {
     if (error instanceof AppError) {
-      // Our own messages only: they name the failed step and never contain provider response bodies.
       this.logger.warn(`Login failed: ${error.code} - ${error.message}`);
       return REDIRECT_ERRORS.has(error.code) ? error.code : 'provider_error';
     }

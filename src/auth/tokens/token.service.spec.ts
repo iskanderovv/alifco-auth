@@ -7,7 +7,6 @@ import { TokenService, ttlToSeconds } from './token.service';
 const USER_ID = '3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b';
 const SECRET = new TextEncoder().encode(TEST_TOKEN_CONFIG.JWT_SECRET);
 
-// Access token logic never touches the database, so Prisma is not needed here.
 function makeService(overrides = {}): TokenService {
   return new TokenService(
     {} as PrismaService,
@@ -15,7 +14,6 @@ function makeService(overrides = {}): TokenService {
   );
 }
 
-/** Builds a token the way an attacker or a buggy client might, to see what is rejected. */
 function craft(
   claims: { iss?: string; aud?: string; exp?: number; sub?: string } = {},
   alg: 'HS256' | 'HS512' = 'HS256',

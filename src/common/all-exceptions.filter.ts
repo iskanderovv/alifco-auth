@@ -15,7 +15,6 @@ interface Described {
   message: string;
 }
 
-/** Body-parser errors (too large, malformed JSON) are plain objects with a status, not HttpException. */
 function isHttpError(
   value: unknown,
 ): value is { status: number; type?: string } {
@@ -26,10 +25,6 @@ function isHttpError(
   );
 }
 
-/**
- * Every error leaves the API in one shape: `{ "error": { "code", "message" } }`.
- * Unexpected errors become a generic 500: the details go to the log, never to the client.
- */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);

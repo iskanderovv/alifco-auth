@@ -74,7 +74,6 @@ describe('OAuthTransactionService (real PostgreSQL)', () => {
       }),
     ).rejects.toMatchObject({ code: 'invalid_state' });
 
-    // An attacker guessing wrong must not burn the victim's transaction.
     await expect(
       service.consume({
         transactionId: started.transactionId,

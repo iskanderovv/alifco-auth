@@ -18,7 +18,6 @@ import { ProviderRegistry } from './providers/provider.registry';
 const FRONTEND = 'http://localhost:5173';
 const CALLBACK = `${FRONTEND}/auth/callback`;
 
-/** Stands in for Google: no network, the profile and failures are set by each test. */
 class FakeProvider implements OAuthProvider {
   readonly name = ProviderName.google;
   profile: OAuthProfile = {
@@ -105,7 +104,6 @@ describe('Auth HTTP flow (fake provider, real PostgreSQL)', () => {
 
   const http = () => request(app.getHttpServer());
 
-  /** Runs GET /auth/google and returns what the browser would hold. */
   async function startLogin() {
     const res = await http().get('/auth/google');
     const location = new URL(res.headers.location);
@@ -117,7 +115,6 @@ describe('Auth HTTP flow (fake provider, real PostgreSQL)', () => {
     };
   }
 
-  /** A complete successful login. Returns the refresh cookie value. */
   async function login(): Promise<string> {
     const { state, txCookie } = await startLogin();
     const res = await http()
@@ -169,17 +166,15 @@ describe('Auth HTTP flow (fake provider, real PostgreSQL)', () => {
         .set('Cookie', txCookie);
 
       expect(res.status).toBe(302);
-      expect(res.headers.location).toBe(CALLBACK); // no query string at all
+      expect(res.headers.location).toBe(CALLBACK);
 
       const refreshLine = cookieLine(res, 'refresh_token');
       expect(refreshLine).toContain('HttpOnly');
       expect(refreshLine).toContain('Path=/auth');
       expect(refreshLine).toContain('SameSite=Lax');
       expect(refreshLine).not.toContain('Domain=');
-      // the transaction cookie is cleared
       expect(cookieLine(res, 'oauth_tx')).toMatch(/oauth_tx=;/);
 
-      // The adapter got the verifier that matches the challenge sent to the provider.
       expect(provider.lastInput?.code).toBe('good-code');
       expect(pkceChallenge(provider.lastInput?.codeVerifier as string)).toBe(
         challenge,
@@ -326,7 +321,6 @@ describe('Auth HTTP flow (fake provider, real PostgreSQL)', () => {
       expect(wrongOrigin.status).toBe(403);
       expect(wrongOrigin.body.error.code).toBe('csrf_origin_invalid');
 
-      // Neither attempt consumed the token.
       expect((await refresh(cookie).set('Origin', FRONTEND)).status).toBe(200);
     });
 
@@ -350,7 +344,6 @@ describe('Auth HTTP flow (fake provider, real PostgreSQL)', () => {
       expect(reuse.body.error.code).toBe('refresh_reused');
       expect(cookieLine(reuse, 'refresh_token')).toMatch(/refresh_token=;/);
 
-      // The legitimate newest token was revoked with the family.
       expect((await refresh(second)).status).toBe(401);
     });
 

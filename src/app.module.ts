@@ -25,8 +25,7 @@ import { UsersModule } from './users/users.module';
             config.get('NODE_ENV', { infer: true }) === 'development'
               ? { target: 'pino-pretty', options: { singleLine: true } }
               : undefined,
-          // Request lines carry no headers, no cookies and no query string, so tokens,
-          // OAuth `code` and `state` can never reach the logs through the request logger.
+          // Request logs carry no headers, cookies or query string, so tokens never reach them.
           serializers: {
             req: (req: { id: unknown; method: string; url?: string }) => ({
               id: req.id,
@@ -37,7 +36,6 @@ import { UsersModule } from './users/users.module';
               statusCode: res.statusCode,
             }),
           },
-          // Defense in depth for anything logged manually.
           redact: {
             paths: [
               'authorization',
@@ -54,10 +52,9 @@ import { UsersModule } from './users/users.module';
         },
       }),
     }),
-    // Global default. Auth routes get stricter limits where they are defined.
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 60 }],
-      // Integration tests fire many requests from one address.
+      // Integration tests send many requests from one address.
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
     PrismaModule,

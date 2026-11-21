@@ -10,7 +10,6 @@ import { TokenService } from '../tokens/token.service';
 
 type AuthenticatedRequest = Request & { userId?: string };
 
-/** Requires `Authorization: Bearer <access token>` and exposes the user id to the handler. */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(private readonly tokens: TokenService) {}

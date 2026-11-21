@@ -7,11 +7,6 @@ import { GoogleProvider } from './google.provider';
 import type { OAuthProvider } from './oauth-provider.interface';
 import { TelegramProvider } from './telegram.provider';
 
-/**
- * The providers that are configured. A provider with no credentials is simply absent, so the
- * service still boots with only Google set up and the others return 404.
- * Adding a provider: write one adapter, register it here.
- */
 @Injectable()
 export class ProviderRegistry {
   private readonly logger = new Logger(ProviderRegistry.name);

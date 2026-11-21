@@ -3,7 +3,6 @@ import { z } from 'zod';
 const emptyToUndefined = (value: unknown) => (value === '' ? undefined : value);
 
 const nonEmpty = z.string().min(1);
-/** `FOO=` in a .env file arrives as an empty string. Treat it as "not set". */
 const optionalString = z.preprocess(emptyToUndefined, nonEmpty.optional());
 const stripTrailingSlash = (value: string) => value.replace(/\/+$/, '');
 
@@ -51,7 +50,7 @@ const envSchema = z
     BODY_LIMIT_BYTES: z.coerce.number().int().min(256).default(10_240),
   })
   .superRefine((env, ctx) => {
-    // A provider is enabled only when both of its values are set. Half a pair is a mistake.
+    // A provider needs both of its values or neither.
     const pairs: Array<[keyof typeof env, keyof typeof env]> = [
       ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
       ['FACEBOOK_APP_ID', 'FACEBOOK_APP_SECRET'],
@@ -97,10 +96,6 @@ const envSchema = z
 
 export type Env = z.output<typeof envSchema>;
 
-/**
- * Validates raw environment variables. On failure throws one error that lists every
- * problem by variable name. Values are never included, so secrets cannot leak into logs.
- */
 export function parseEnv(raw: Record<string, unknown>): Env {
   const result = envSchema.safeParse(raw);
   if (result.success) {

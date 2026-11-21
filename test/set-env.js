@@ -1,5 +1,3 @@
-// Runs before every integration test file, before any application module is imported.
-// Environment variables win over .env, so tests never touch the dev database or real provider keys.
 process.env.NODE_ENV = 'test';
 process.env.LOG_LEVEL = 'silent';
 process.env.DATABASE_URL =
@@ -11,7 +9,6 @@ process.env.JWT_SECRET = 'integration-jwt-secret-integration-jwt-secret';
 process.env.COOKIE_SECRET = 'integration-cookie-secret-integration-cookie';
 process.env.COOKIE_SECURE = 'false';
 process.env.COOKIE_SAME_SITE = 'lax';
-// Empty means "provider not configured". The tests inject a fake provider.
 for (const key of [
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',

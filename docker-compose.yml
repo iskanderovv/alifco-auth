@@ -1,10 +1,4 @@
-# Local development database. The API runs on the host (npm run start:dev).
-#
-#   docker compose up -d db
-#   npx prisma migrate deploy
-#
-# Port 5432 is taken if another Postgres is running locally. Use another port:
-#   POSTGRES_PORT=5433 docker compose up -d db   (and change DATABASE_URL to match)
+# Dev database: docker compose up -d db. POSTGRES_PORT changes the host port.
 services:
   db:
     image: postgres:18-alpine
@@ -16,7 +10,7 @@ services:
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
-      # Postgres 18+ images keep versioned data under /var/lib/postgresql.
+      # Postgres 18+ keeps data under /var/lib/postgresql
       - pgdata:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U oauth -d oauth']

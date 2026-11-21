@@ -15,7 +15,6 @@ export interface RequestMeta {
 }
 
 export interface IssuedRefreshToken {
-  /** Raw token. Goes into the cookie once and is never stored. */
   token: string;
   familyId: string;
   expiresAt: Date;
@@ -23,7 +22,6 @@ export interface IssuedRefreshToken {
 
 export interface IssuedAccessToken {
   accessToken: string;
-  /** Seconds until expiry. */
   expiresIn: number;
 }
 
@@ -35,7 +33,6 @@ type Rotation =
 
 const UNIT_SECONDS = { s: 1, m: 60, h: 3600, d: 86_400 } as const;
 
-/** "15m" -> 900. The format is validated at startup in config/env.ts. */
 export function ttlToSeconds(ttl: string): number {
   const match = /^(\d+)([smhd])$/.exec(ttl);
   if (!match) {
@@ -68,9 +65,7 @@ export class TokenService {
       config.get('REFRESH_TTL_DAYS', { infer: true }) * 86_400_000;
   }
 
-  // ---------------------------------------------------------------- access
-
-  /** Minimal claims on purpose: no email, no roles. Profile data comes from /me. */
+  // Minimal claims on purpose: profile data comes from /me.
   async issueAccessToken(userId: string): Promise<IssuedAccessToken> {
     const now = Math.floor(Date.now() / 1000);
     const accessToken = await new SignJWT({})
@@ -84,7 +79,6 @@ export class TokenService {
     return { accessToken, expiresIn: this.accessTtlSeconds };
   }
 
-  /** Pins the algorithm, so `alg: none` and other algorithms are rejected. */
   async verifyAccessToken(token: string): Promise<{ userId: string }> {
     try {
       const { payload } = await jwtVerify(token, this.secret, {
@@ -102,9 +96,6 @@ export class TokenService {
     }
   }
 
-  // --------------------------------------------------------------- refresh
-
-  /** Starts a new session: a new family with its first token. */
   async issueRefreshToken(
     userId: string,
     meta: RequestMeta = {},
@@ -112,15 +103,6 @@ export class TokenService {
     return this.insertRefreshToken(this.prisma, userId, randomUUID(), meta);
   }
 
-  /**
-   * Rotates a refresh token. The old token is revoked and a new one in the same family is issued.
-   *
-   * Atomicity: the UPDATE only matches a row that is still active, so when two requests
-   * present the same token only one can match. The loser finds a revoked token, which is
-   * treated as reuse and revokes the whole family (a stolen token cannot outlive the owner's
-   * next refresh). Two tabs refreshing at once will therefore log the user out. The SPA
-   * must serialize its refresh calls.
-   */
   async rotateRefreshToken(
     rawToken: string,
     meta: RequestMeta = {},
@@ -128,10 +110,10 @@ export class TokenService {
     const tokenHash = sha256Hex(rawToken);
     const now = new Date();
 
-    // Failures are returned, not thrown, inside the transaction: throwing would roll back
-    // the family revocation that reuse detection has to keep.
+    // Failures are returned, not thrown: throwing would roll back the family revocation.
     const result = await this.prisma.$transaction(
       async (tx): Promise<Rotation> => {
+        // Only one concurrent caller can match a still-active row.
         const { count } = await tx.refreshToken.updateMany({
           where: { tokenHash, revokedAt: null, expiresAt: { gt: now } },
           data: { revokedAt: now },
@@ -179,7 +161,6 @@ export class TokenService {
     }
   }
 
-  /** Logout. Idempotent: an unknown or missing token is not an error. */
   async revokeSession(rawToken: string | undefined): Promise<void> {
     if (!rawToken) {
       return;
@@ -211,7 +192,6 @@ export class TokenService {
         tokenHash: sha256Hex(token),
         expiresAt,
         userAgent: meta.userAgent?.slice(0, 512),
-        // The column is inet: a malformed value would make Postgres reject the insert.
         ip: meta.ip && isIP(meta.ip) ? meta.ip : undefined,
       },
     });

@@ -4,11 +4,6 @@ import type { Request } from 'express';
 import { AppError } from '../../common/app-error';
 import type { Env } from '../../config/env';
 
-/**
- * CSRF defense for the endpoints that act on the refresh cookie (refresh, logout).
- * Layers: SameSite cookie, strict CORS allowlist, a custom header that a cross-site form
- * cannot send (it forces a CORS preflight), and an Origin check when the browser sends one.
- */
 @Injectable()
 export class CsrfGuard implements CanActivate {
   private readonly frontendUrl: string;
@@ -20,6 +15,7 @@ export class CsrfGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
 
+    // A custom header forces a CORS preflight, so a cross-site form cannot send it.
     if (request.get('x-requested-with') !== 'fetch') {
       throw new AppError('csrf_header_missing', 403);
     }

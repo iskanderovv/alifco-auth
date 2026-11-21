@@ -6,7 +6,6 @@ export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
   'postgresql://oauth:oauth@localhost:5432/oauth_test';
 
-/** A ConfigService stand-in that answers from a plain object. */
 export function fakeConfig(values: Partial<Env>): ConfigService<Env, true> {
   return {
     get: (key: keyof Env) => values[key],
@@ -21,7 +20,6 @@ export async function createTestPrisma(): Promise<PrismaService> {
   return prisma;
 }
 
-/** Empties every table. The statement is a constant, no input is interpolated. */
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
   await prisma.$executeRawUnsafe(
     'TRUNCATE TABLE "oauth_transactions", "refresh_tokens", "oauth_identities", "users" CASCADE',

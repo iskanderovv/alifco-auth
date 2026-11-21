@@ -6,25 +6,12 @@ import { asString, providerError } from './oidc';
 export interface FacebookProviderOptions {
   appId: string;
   appSecret: string;
-  /** For example `v25.0`. Pinned so a Graph API upgrade cannot change behavior silently. */
   graphVersion: string;
-  /** Built from API_BASE_URL, never from the request. Must match the Meta console exactly. */
   redirectUri: string;
   timeoutMs: number;
-  /** Injectable so tests never touch the network. */
   fetchFn?: typeof fetch;
 }
 
-/**
- * Facebook Login, authorization code flow with PKCE (S256), then Graph API `/me`.
- *
- * Facebook gives no `email_verified` claim, so `emailVerified` is always false: the email is
- * kept on the identity for reference and is never used to match or merge accounts.
- * The Graph API id is the stable identifier, never the email.
- *
- * Every Graph call carries `appsecret_proof`, so a leaked access token is useless without the
- * app secret. Secrets go in the POST body, not in a URL.
- */
 export class FacebookProvider implements OAuthProvider {
   readonly name = ProviderName.facebook;
 
@@ -64,6 +51,7 @@ export class FacebookProvider implements OAuthProvider {
     return {
       providerUserId: id,
       email: asString(me.email),
+      // Facebook has no email_verified, so its email is never trusted.
       emailVerified: false,
       name: asString(me.name),
       avatarUrl: asString(me.picture?.data?.url),
@@ -118,7 +106,6 @@ export class FacebookProvider implements OAuthProvider {
     return body ?? {};
   }
 
-  /** One place for timeout, status handling and JSON parsing. Response bodies are never copied into errors. */
   private async request(
     url: string,
     init: RequestInit,

@@ -9,17 +9,13 @@ import {
 import { OAuthMode, OAuthProvider } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
 
-/** Name of the cookie that carries the transaction id (and nothing else) to the callback. */
 export const OAUTH_TX_COOKIE = 'oauth_tx';
 
 const TRANSACTION_TTL_MS = 10 * 60 * 1000;
 
 export interface StartedTransaction {
-  /** Goes into the `oauth_tx` cookie. */
   transactionId: string;
-  /** Goes to the provider as `state`. Only its hash is stored. */
   state: string;
-  /** Goes to the provider as `code_challenge` (S256). */
   codeChallenge: string;
 }
 
@@ -29,11 +25,6 @@ export interface ConsumedTransaction {
   userId: string | null;
 }
 
-/**
- * One row per started OAuth flow: `state` + PKCE verifier, single use, short lived.
- * The browser is bound to the flow through a cookie holding the row id, so a callback
- * needs the cookie, the matching `state` and the same provider.
- */
 @Injectable()
 export class OAuthTransactionService {
   constructor(private readonly prisma: PrismaService) {}
@@ -44,7 +35,7 @@ export class OAuthTransactionService {
     userId?: string;
   }): Promise<StartedTransaction> {
     const state = randomToken(32);
-    const codeVerifier = randomToken(32); // 43 characters, inside the 43-128 PKCE range
+    const codeVerifier = randomToken(32);
 
     const row = await this.prisma.oAuthTransaction.create({
       data: {
@@ -64,11 +55,6 @@ export class OAuthTransactionService {
     };
   }
 
-  /**
-   * Validates and consumes the transaction in one atomic UPDATE. A replayed, expired,
-   * forged or cross-provider callback matches no row and fails with `invalid_state`.
-   * All of those failures look the same on purpose.
-   */
   async consume(input: {
     transactionId: string | undefined;
     state: string | undefined;
@@ -80,6 +66,7 @@ export class OAuthTransactionService {
     }
 
     const now = new Date();
+    // Atomic single use: a replayed, expired or forged callback matches no row.
     const { count } = await this.prisma.oAuthTransaction.updateMany({
       where: {
         id: transactionId,

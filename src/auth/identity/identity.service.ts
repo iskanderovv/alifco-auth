@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AppError } from '../../common/app-error';
 import { Prisma, User } from '../../generated/prisma/client';
 import { OAuthProvider } from '../../generated/prisma/enums';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -21,14 +22,7 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
-/**
- * Turns a verified provider profile into a local user.
- *
- * The only key is (provider, provider_user_id). An email is never used to find or merge
- * accounts: Facebook and Telegram do not prove email ownership, and matching on an
- * unverified email would let an attacker pre-register a victim's address and take over
- * their account later.
- */
+// Accounts are matched only by (provider, provider_user_id), never by email: an unverified email could take over an account.
 @Injectable()
 export class IdentityService {
   constructor(private readonly prisma: PrismaService) {}
@@ -44,10 +38,8 @@ export class IdentityService {
 
     const providerEmail = normalizeEmail(profile.email);
     try {
-      // Nested create: the user and its identity are written in one transaction.
       const user = await this.prisma.user.create({
         data: {
-          // Informational and only when the provider verified it. Never used to match accounts.
           email: profile.emailVerified ? providerEmail : undefined,
           name: displayName(profile),
           avatarUrl: safeAvatarUrl(profile.avatarUrl),
@@ -63,9 +55,7 @@ export class IdentityService {
       });
       return { user, isNewUser: true };
     } catch (error) {
-      // Two first logins raced and the other one committed first. The unique index on
-      // (provider, provider_user_id) is the final authority: the whole transaction above
-      // rolled back, so log in the winner's user. Never create a second user.
+      // Another request created it first. The unique index decides, so log in its user.
       if (isUniqueViolation(error)) {
         const winner = await this.loginExisting(provider, profile);
         if (winner) {
@@ -76,11 +66,68 @@ export class IdentityService {
     }
   }
 
-  /**
-   * Existing identity: log in its owner and refresh identity metadata only.
-   * `users.name` and `users.avatar_url` are set once at signup and never overwritten by a
-   * later login, so a provider-side change cannot silently rewrite the account profile.
-   */
+  async linkProfile(
+    userId: string,
+    provider: OAuthProvider,
+    profile: OAuthProfile,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new AppError('invalid_state', 400);
+    }
+
+    try {
+      await this.prisma.oAuthIdentity.create({
+        data: {
+          userId,
+          provider,
+          providerUserId: profile.providerUserId,
+          email: normalizeEmail(profile.email),
+          lastLoginAt: new Date(),
+        },
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const owner = await this.prisma.oAuthIdentity.findUnique({
+        where: {
+          provider_providerUserId: {
+            provider,
+            providerUserId: profile.providerUserId,
+          },
+        },
+        select: { userId: true },
+      });
+      throw owner && owner.userId !== userId
+        ? new AppError('identity_taken', 409)
+        : new AppError('already_linked', 409);
+    }
+  }
+
+  async unlink(userId: string, provider: OAuthProvider): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      // Lock the user row so concurrent unlinks cannot remove every login method.
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+
+      const identities = await tx.oAuthIdentity.findMany({
+        where: { userId },
+        select: { id: true, provider: true },
+      });
+      const target = identities.find((item) => item.provider === provider);
+      if (!target) {
+        throw new AppError('not_linked', 404);
+      }
+      if (identities.length <= 1) {
+        throw new AppError('last_identity', 409);
+      }
+      await tx.oAuthIdentity.delete({ where: { id: target.id } });
+    });
+  }
+
   private async loginExisting(
     provider: OAuthProvider,
     profile: OAuthProfile,

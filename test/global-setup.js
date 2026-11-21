@@ -1,4 +1,3 @@
-// Runs once before the integration tests: applies the committed migrations to the test database.
 const { execSync } = require('node:child_process');
 
 module.exports = async () => {

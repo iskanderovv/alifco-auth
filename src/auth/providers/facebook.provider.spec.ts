@@ -21,7 +21,6 @@ const me = {
   picture: { data: { url: 'https://scontent.example.com/ali.jpg' } },
 };
 
-/** Answers the token call first and the profile call second. */
 function graph(tokenResponse: Response, profileResponse?: Response) {
   const fetchFn = jest.fn();
   fetchFn.mockResolvedValueOnce(tokenResponse);
@@ -85,7 +84,7 @@ describe('FacebookProvider', () => {
       'https://graph.facebook.com/v25.0/oauth/access_token',
     );
     expect(tokenInit.method).toBe('POST');
-    expect(tokenUrl).not.toContain(APP_SECRET); // secrets never go in a URL
+    expect(tokenUrl).not.toContain(APP_SECRET);
     expect(Object.fromEntries(tokenInit.body as URLSearchParams)).toEqual({
       client_id: APP_ID,
       client_secret: APP_SECRET,

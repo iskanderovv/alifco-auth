@@ -86,12 +86,10 @@ describe('TokenService refresh tokens (real PostgreSQL)', () => {
     const first = await service.issueRefreshToken(userId);
     const second = await service.rotateRefreshToken(first.token);
 
-    // Someone presents the old token again: the thief or a replay.
     await expect(service.rotateRefreshToken(first.token)).rejects.toMatchObject(
       { code: 'refresh_reused' },
     );
 
-    // The legitimate newest token is dead too, so the session must be started again.
     await expect(
       service.rotateRefreshToken(second.refreshToken.token),
     ).rejects.toMatchObject({ code: 'refresh_reused' });
@@ -127,7 +125,6 @@ describe('TokenService refresh tokens (real PostgreSQL)', () => {
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
     expect(rejected[0].reason).toMatchObject({ code: 'refresh_reused' });
-    // No fork: nothing stays active once reuse is detected.
     expect((await rows()).every((row) => row.revokedAt !== null)).toBe(true);
   });
 

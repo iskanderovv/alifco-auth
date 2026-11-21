@@ -9,29 +9,14 @@ const JWKS_URL = 'https://oauth.telegram.org/.well-known/jwks.json';
 const ISSUER = 'https://oauth.telegram.org';
 
 export interface TelegramProviderOptions {
-  /** The bot id shown under BotFather, Login Widget. It is also the `aud` of the id_token. */
   clientId: string;
   clientSecret: string;
-  /** Built from API_BASE_URL, never from the request. Must be listed in BotFather. */
   redirectUri: string;
   timeoutMs: number;
-  /** Injectable so tests never touch the network. */
   fetchFn?: typeof fetch;
   getKey?: JWTVerifyGetKey;
 }
 
-/**
- * Log in with Telegram, the OpenID Connect flow (authorization code + PKCE S256).
- * Docs: https://core.telegram.org/bots/telegram-login
- *
- * Differences from Google: the client authenticates at the token endpoint with HTTP Basic,
- * there is no userinfo endpoint (the profile is in the `id_token`), and Telegram never
- * returns an email. `sub` is the stable id. No `nonce`: the documented manual flow has no
- * nonce parameter, so `state` and PKCE protect the redirect.
- *
- * The signing algorithm defaults to RS256 and can be changed in BotFather. The verifier pins
- * RS256, so leave that BotFather setting at its default.
- */
 export class TelegramProvider implements OAuthProvider {
   readonly name = ProviderName.telegram;
 
@@ -54,7 +39,6 @@ export class TelegramProvider implements OAuthProvider {
       client_id: this.options.clientId,
       redirect_uri: this.options.redirectUri,
       response_type: 'code',
-      // No `phone`: we do not need it and it needs separate user consent.
       scope: 'openid profile',
       state,
       code_challenge: codeChallenge,
@@ -63,6 +47,7 @@ export class TelegramProvider implements OAuthProvider {
     return url.toString();
   }
 
+  // The verifier pins RS256, which is the BotFather default. Do not change it there.
   async authenticate(input: {
     code: string;
     codeVerifier: string;
